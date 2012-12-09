@@ -6,17 +6,19 @@ var path = require('path');
 
 var argv = require('optimist')
 	.usage('Usage: $0 [-x] [-o dir] files')
-	.boolean('x')
-	.alias('x', 'compress')
-	.describe('x', 'Compress output by removing some whitespaces.')
-	.alias('o', 'output')
-	.describe('o', 'Output all compiled CSS to the specified directory.')
+	.options('x', {
+		boolean: true,
+		alias: 'compress',
+		describe: 'Compress output by removing some whitespaces.'
+	})
+	.options('o', {
+		alias: 'output',
+		describe: 'Output all compiled CSS to the specified directory.',
+		default: false
+	})
 	.argv;
 
-function compile(file) {
-	var source = path.relative(process.cwd(), file);
-	var target = path.relative(process.cwd(), path.resolve(path.dirname(file), path.basename(file, '.less')+'.css'));
-
+function compile(source, target) {
 	fs.readFile(source, 'utf8', function(err, content) {
 		if(err)
 			return console.log('Error reading %s: %s', source, err);
@@ -33,7 +35,6 @@ function compile(file) {
 }
 
 function search(filename) {
-	//console.log('Searching %s...', filename);
 	fs.stat(filename, function(err, stats) {
 		if(err)
 			return console.log('Error describing %s: %s', filename, err);
@@ -44,20 +45,31 @@ function search(filename) {
 					search(path.resolve(filename, files[i]));
 				}
 			});
-		}
-		else if(stats.isFile() && path.extname(filename) == '.less') {
-			var toWatch = path.relative(process.cwd(), filename);
-			//console.log('Adding %s to watch list.', toWatch);
-			watch(toWatch);
+		} else if(stats.isFile() && path.extname(filename) == '.less') {
+			watch(filename);
 		}
 	});
 }
 
 function watch(filename) {
+	var source = path.relative(process.cwd(), filename);
+	var target = path.relative(
+		process.cwd(),
+		path.resolve(
+			(argv.output
+				? path.relative(
+					process.cwd(),
+					argv.output
+				)
+				: path.dirname(filename)
+			),
+			path.basename(filename, '.less') + '.css'
+		)
+	);
 	fs.watch(filename, function(event) {
-		compile(filename);
+		compile(source, target);
 	});
-	console.log('Watching %s', path.relative(process.cwd(), filename));
+	//console.log('Watching %s', path.relative(process.cwd(), filename));
 }
 
 if(!argv._.length) {

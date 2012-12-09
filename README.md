@@ -24,10 +24,12 @@ Watch a single file: `lessw style.less`
 
 Watch all .less files in a directory (recursive): `lessw styles/`
 
+Watch and compile all files in less/ to css/: `lessw -o css/ less/`
+
 ## TODO
 
 - Compress option does nothing
-- Output dir option does nothing
+- Track and bubble recompile for @import rules
 
 ## License
 
