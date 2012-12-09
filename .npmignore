@@ -2,6 +2,5 @@
 .gitignore
 .npmignore
 LICENSE
-README.md
 .DS_Store
 node_modules
