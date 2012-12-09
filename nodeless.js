@@ -67,7 +67,19 @@ function watch(filename) {
 		)
 	);
 	fs.watch(filename, function(event) {
-		compile(source, target);
+		fs.stat(source, function(err, sourceStats) {
+			if(err)
+				return console.log('Error monitoring %s: %s', source, err);
+
+			fs.stat(target, function(err, targetStats) {
+				if(err)
+					return console.log('Error monitoring %s: %s', target, err);
+
+				//console.log('Source: %s\nTarget: %s', sourceStats.mtime, targetStats.mtime);
+				if(targetStats.mtime < sourceStats.mtime)
+					compile(source, target);
+			});
+		});
 	});
 	//console.log('Watching %s', path.relative(process.cwd(), filename));
 }
