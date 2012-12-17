@@ -22,10 +22,18 @@ function compile(source, target) {
 	fs.readFile(source, 'utf8', function(err, content) {
 		if(err)
 			return console.log('Error reading %s: %s', source, err);
-		less.render(content, function(err, css) {
-			if(err)
-				return console.log('Error compiling %s: %s', source, err);
-			fs.writeFile(target, css, function(err) {
+
+		(new less.Parser).parse(content, function(err, tree) {
+			if(err) {
+				console.log('%s column %s in %s:\n%s',
+					err.message,
+					err.column,
+					source,
+					err.extract.join('\n'));
+				return;
+			}
+
+			fs.writeFile(target, tree.toCSS(), function(err) {
 				if(err)
 					return console.log('Error saving %s: %s', target, err);
 				console.log('Compiled %s to %s', source, target);
@@ -51,6 +59,8 @@ function search(filename) {
 	});
 }
 
+var sources = {};
+
 function watch(filename) {
 	var source = path.relative(process.cwd(), filename);
 	var target = path.relative(
@@ -66,19 +76,23 @@ function watch(filename) {
 			path.basename(filename, '.less') + '.css'
 		)
 	);
+	sources[source] = 0;
 	fs.watch(filename, function(event) {
-		fs.stat(source, function(err, sourceStats) {
-			if(err)
-				return console.log('Error monitoring %s: %s', source, err);
+		fs.exists(source, function(exists) {
+			if(!exists) {
+				compile(source, target);
+			} else {
+				fs.stat(source, function(err, sourceStats) {
+					if(err)
+						return console.log('Error monitoring %s: %s', source, err);
 
-			fs.stat(target, function(err, targetStats) {
-				if(err)
-					return console.log('Error monitoring %s: %s', target, err);
+					if(sourceStats.mtime > sources[source]) { // Only compile if more recent
+						sources[source] = sourceStats.mtime;
 
-				//console.log('Source: %s\nTarget: %s', sourceStats.mtime, targetStats.mtime);
-				if(targetStats.mtime < sourceStats.mtime)
-					compile(source, target);
-			});
+						compile(source, target);
+					}
+				});
+			}
 		});
 	});
 	//console.log('Watching %s', path.relative(process.cwd(), filename));
