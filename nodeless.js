@@ -62,6 +62,21 @@ var stylesheetError = function (err, filename) {
 		  err.extract.join('\n').trim());
 }
 
+var time = function () {
+	var d, h, m, s;
+
+	d = new Date();
+	h = d.getHours();
+	m = d.getMinutes();
+	s = d.getSeconds();
+
+	if (h < 10) h = '0' + h;
+	if (m < 10) m = '0' + m;
+	if (s < 10) s = '0' + s;
+
+	return h + ':' + m + ':' + s;
+}
+
 /**
  * COMPILATION
  */
@@ -81,7 +96,10 @@ var compile = function (source, target) {
 				fs.writeFile(target, css, function (err) {
 					if (err) return error('Error saving %s: %s', target, err);
 
-					log('Compiled %s to %s', relativePath(source), relativePath(target));
+					var d = new Date();
+					log('[%s] Compiled %s to %s',
+						time(),
+						relativePath(source), relativePath(target));
 				});
 			});
 		} catch (err) { return parseError(err, source); }
