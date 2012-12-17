@@ -57,9 +57,9 @@ var stylesheetError = function (err, filename) {
 		  relativePath(filename),
 		  err.line,
 		  err.column,
-		  err.filename || path.basename(filename),
+		  err.filename/* || path.basename(filename)*/,
 		  err.message.trim(),
-		  err.extract.join('\n').trim());
+		  err.extract.join('\n').replace(/^\n*([\s\S]*)$/, '$1').trimRight());
 }
 
 var time = function () {
@@ -86,8 +86,11 @@ var compile = function (source, target) {
 		if (err) return error('Error reading %s: %s', source, err);
 
 		try {
-			process.chdir(path.dirname(source));
-			(new less.Parser).parse(content, function (err, tree) {
+			(new(less.Parser)({
+				paths: [relativePath(path.dirname(source))/*, process.cwd()*/],
+				filename: path.basename(source)
+			}))
+			.parse(content, function (err, tree) {
 				if (err) return stylesheetError(err, source);
 
 				try { var css = tree.toCSS(options); }
