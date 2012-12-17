@@ -18,17 +18,23 @@ In `package.json`:
 
 ## Usage
 
-Watch all .less files in this directory (recursive): `lessw`
+### Options
 
-Watch a single file: `lessw style.less`
+- `-h` or `--help`: Display usage information.
+- `-x` or `--compress`: Compress output by removing some whitespaces.
+- `-v` or `--verbose`: Output detailed log information.
+- `-o` or `--output`: Output all compiled CSS to the specified directory.
 
-Watch all .less files in a directory (recursive): `lessw styles/`
+### Examples
 
-Watch and compile all files in less/ to css/: `lessw -o css/ less/`
+- Watch a single file: `lessw style.less`
+- Watch all .less files in this directory (recursive): `lessw`
+- Watch all .less files in a directory (recursive): `lessw styles/`
+- Watch and compile all files in less/ to css/: `lessw -o css/ less/`
+- Watch all .less files in a directory and compress the output: `lessw -x`
 
 ## TODO
 
-- Compress option does nothing
 - Track and bubble recompile for @import rules
 
 ## License
