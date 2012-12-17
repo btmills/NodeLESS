@@ -18,27 +18,42 @@ var argv = require('optimist')
 	})
 	.argv;
 
+var cwd = process.cwd();
+
+function relativePath(filename) {
+	return path.relative(cwd, filename);
+}
+
+function parseError(err, filename) {
+	console.log('Parse error at line %d, column %d in %s: %s\n%s',
+		err.line,
+		err.column,
+		relativePath(filename),
+		err.message.trim(),
+		err.extract.join('\n').trim());
+}
+
 function compile(source, target) {
 	fs.readFile(source, 'utf8', function(err, content) {
 		if(err)
 			return console.log('Error reading %s: %s', source, err);
 
-		(new less.Parser).parse(content, function(err, tree) {
-			if(err) {
-				console.log('%s column %s in %s:\n%s',
-					err.message,
-					err.column,
-					source,
-					err.extract.join('\n'));
-				return;
-			}
+		try {
+			process.chdir(path.dirname(source));
+			(new less.Parser).parse(content, function(err, tree) {
+				if(err) {
+					return parseError(err, source);
+				}
 
-			fs.writeFile(target, tree.toCSS(), function(err) {
-				if(err)
-					return console.log('Error saving %s: %s', target, err);
-				console.log('Compiled %s to %s', source, target);
+				fs.writeFile(target, tree.toCSS(), function(err) {
+					if(err)
+						return console.log('Error saving %s: %s', target, err);
+					console.log('Compiled %s to %s', relativePath(source), relativePath(target));
+				});
 			});
-		});
+		} catch(err) {
+			return parseError(err, source);
+		}
 	});
 }
 
@@ -62,9 +77,9 @@ function search(filename) {
 var sources = {};
 
 function watch(filename) {
-	var source = path.relative(process.cwd(), filename);
-	var target = path.relative(
-		process.cwd(),
+	var source = /*path.relative(process.cwd(), */filename/*)*/;
+	var target = /*path.relative(
+		process.cwd(),*/
 		path.resolve(
 			(argv.output
 				? path.relative(
@@ -74,8 +89,8 @@ function watch(filename) {
 				: path.dirname(filename)
 			),
 			path.basename(filename, '.less') + '.css'
-		)
-	);
+		)/*
+	)*/;
 	sources[source] = 0;
 	fs.watch(filename, function(event) {
 		fs.exists(source, function(exists) {
