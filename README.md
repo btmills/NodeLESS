@@ -35,7 +35,8 @@ In `package.json`:
 
 ## TODO
 
-- Track and bubble recompile for @import rules
+- Complex dependency trees can trigger multiple recompiles of the same file
+- Variables declared in master files result in false positive compilation errors in imported files
 
 ## License
 

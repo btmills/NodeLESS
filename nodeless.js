@@ -1,16 +1,17 @@
 #! /usr/bin/env node
 
 var fs = require('fs');
+var lazy = require('lazy');
 var less = require('less');
-var path = require('path');
 var optimist = require('optimist');
+var path = require('path');
 
 /**
  * ENVIRONMENT
  */
 
 var argv = optimist
-	.usage('Usage: $0 -h -x -v -o [dir] files')
+	.usage('Usage: $0 -h -x --verbose -o [dir] files')
 	.options('h', {
 		boolean: true,
 		alias: 'help',
@@ -36,13 +37,20 @@ var cwd = process.cwd();
 
 var options = { compress: argv.compress }
 
-var sources = {};
-
 /**
  * LOGGING
  */
 
 var debug = function () { if (argv.verbose) console.log.apply(this, arguments); }
+
+var trace = function () {
+	if(argv.verbose) {
+		if(arguments[0])
+			arguments[0] = 'Trace: ' + arguments[0];
+
+		console.log.apply(this, arguments);
+	}
+}
 
 var error = function () { console.log.apply(this, arguments); }
 
@@ -81,7 +89,59 @@ var time = function () {
  * COMPILATION
  */
 
-var compile = function (source, target) {
+/**
+ * Update a CSS file and its importers
+ *
+ * @param {String} Absolute path to LESS source file
+ */
+var update = function (filename) {
+	trace('update(%s);', filename);
+
+	compile(filename);
+
+	for (var i = 0; i < watchlist[filename].importers.length; i++) {
+		update(watchlist[filename].importers[i]);
+	}
+}
+
+/**
+ * Determine if a file was actually modified
+ *
+ * @param {String} Absolute path to modified file
+ */
+var modified = function (filename, dependency) {
+	trace('modified(%s);', filename);
+
+	fs.stat(filename, function (err, stats) {
+		if (err) return error('Error checking timestamp on %s: %s', filename, err);
+
+		if (stats.mtime > watchlist[filename].mtime) {
+			watchlist[filename].mtime = stats.mtime;
+
+			update(filename);
+		}
+	});
+}
+
+/**
+ * Compile a LESS file into its corresponding CSS
+ *
+ * @param {String} Absolute path to LESS file
+ */
+var compile = function (filename) {
+	trace('compile(%s);', filename);
+	var source = filename;
+	var target = path.resolve(
+					(argv.output
+						? path.relative(
+							process.cwd(),
+							argv.output
+						)
+						: path.dirname(filename)
+					),
+					path.basename(filename, '.less') + '.css'
+				);
+
 	fs.readFile(source, 'utf8', function (err, content) {
 		if (err) return error('Error reading %s: %s', source, err);
 
@@ -113,76 +173,125 @@ var compile = function (source, target) {
  * WATCHING
  */
 
-var search = function (filename) {
-	fs.stat(filename, function (err, stats) {
-		if (err) return error('Error describing %s: %s', filename, err);
+var watchlist = {};
 
-		if (stats.isDirectory()) {
-			fs.readdir(filename, function (err, files) {
-				for (var i = 0; i < files.length; i++)
-					search(path.resolve(filename, files[i]));
-			});
-		} else if (stats.isFile() && path.extname(filename) == '.less') {
-			watch(filename);
-		}
+/**
+ * Add a watch to a file
+ *
+ * @param {String} Absolute path to file
+ */
+var watch = function (filename) {
+	//trace('watch(%s);', filename);
+	fs.watch(filename, function () {
+		modified(filename);
 	});
+	debug('Watching %s.', relativePath(filename));
 }
 
-function watch(filename) {
-	var source = filename;
-	var target = path.resolve(
-					(argv.output
-						? path.relative(
-							process.cwd(),
-							argv.output
-						)
-						: path.dirname(filename)
-					),
-					path.basename(filename, '.less') + '.css'
-				);
-	sources[source] = 0;
-	fs.watch(filename, function (event) {
-		fs.exists(source, function (exists) {
-			if (!exists) {
-				compile(source, target);
-			} else {
-				fs.stat(source, function (err, sourceStats) {
-					if (err) return error('Error monitoring %s: %s', source, err);
+/**
+ * Enumerate and watch LESS files imported from a LESS stylesheet
+ *
+ * @param {String} Absolute path to master LESS file
+ */
+var dependencies = function (importer) {
+	var re = /@import (?:url\()?(?:'|")?([\S]+\.less)(?:'|")?\)?;?/;
 
-					if (sourceStats.mtime > sources[source]) { // Only compile if more recent
-						sources[source] = sourceStats.mtime;
+	try {
+		new lazy(fs.createReadStream(importer))
+			.lines
+			.map(String)
+			.map(function (line) {
+				var match = re.exec(line);
+				if (match) {
+					var imported = path.resolve(
+						path.dirname(importer),
+						match[1]
+					);
+					debug('%s imports %s', relativePath(importer), relativePath(imported));
+					fs.exists(imported, function (exists) {
+						if(!exists)
+							return error('%s was imported by %s but does not exist',
+							             relativePath(imported),
+							             relativePath(importer));
 
-						compile(source, target);
+						found(imported);
+						watchlist[imported].importers.push(importer);
+					});
+				}
+			});
+	} catch (err) {
+		error('Error getting dependencies of %s: %s', importer, err);
+	}
+}
+
+/**
+ * A LESS file was found - watch it and its dependencies
+ *
+ * @param {String} Absolute path to found LESS file
+ */
+var found = function (filename) {
+	if (watchlist.hasOwnProperty(filename)) return; // Already found
+
+	watchlist[filename] = {
+		importers: [],	// What files depend on this?
+		mtime: 0		// When did we last see this file was modified?
+	};
+
+	watch(filename);
+	dependencies(filename);
+}
+
+/**
+ * Add a file or directory to the watchlist
+ * If a directory, search recursively for LESS files
+ *
+ * @param {String} Absolute path to file or directory
+ */
+var add = function (filename) {
+	trace('add(%s);', filename);
+
+	var less = /^[\s\S]+\.less$/;
+
+	fs.exists(filename, function (exists) {
+		if (!exists) return error('%s does not exist.', relativePath(filename));
+
+		fs.stat(filename, function (err, stats) {
+			if (err) return error('Error adding %s to watchlist: %s', relativePath(filename), err);
+
+			if (stats.isDirectory()) {
+				fs.readdir(filename, function (err, files) {
+					if (err) return error('Could not get contents of directory %s: %s', filename, err);
+
+					for (var i = 0; i < files.length; i++) {
+						add(path.resolve(filename, files[i]));
 					}
 				});
+			} else if(less.test(path.basename(filename))) {
+				found(filename);
 			}
 		});
 	});
-	debug('Watching %s', path.relative(process.cwd(), filename));
 }
 
 /**
  * STARTUP
  */
 
-if (argv.help) {
-	optimist.showHelp();
-} else {
-	if (!argv._.length) {
-		search(process.cwd());
+/**
+ * Show help or add watches
+ */
+var run = function () {
+	if (argv.help) {
+		optimist.showHelp();
 	} else {
-		for (var i = 0; i < argv._.length; i++)
-		{
-			var watched = path.resolve(argv._[i]);
-			fs.stat(watched, function (err, stats) {
-				if (err) return error('Error describing %s: %s', watched, err);
-
-				if (stats.isDirectory()) {
-					search(watched);
-				} else if (stats.isFile()) {
-					watch(watched);
-				}
-			});
+		if (argv._.length === 0) { // No paths specified
+			add(process.cwd());
+		} else {
+			for (var i = 0; i < argv._.length; i++) {
+				add(path.resolve(argv._[i]));
+			}
 		}
 	}
 }
+
+run();
