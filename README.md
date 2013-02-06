@@ -1,6 +1,6 @@
 # NodeLESS
 
-Watch [LESS](http://lesscss.org) stylesheets and recompile them on the fly. Usess the official [less.js](https://github.com/cloudhead/less.js) parser.
+Watch [LESS](http://lesscss.org) stylesheets and recompile them on the fly. Uses the official [less.js](https://github.com/cloudhead/less.js) parser.
 
 ## Installation
 
